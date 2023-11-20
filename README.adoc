@@ -1,0 +1,250 @@
+= raku-i3blocklets
+
+It is a set of i3blocklets written in raku programming language.
+
+== bandwidth
+
+----
+[bandwidth]
+command=path/to/raku-i3blocklets/bandwidth
+interval=persist
+INTERFACE=eth0-or-another-interface-name
+#SHOW_BITS=0
+#SECONDS=1
+#INLABEL="in "
+#OUTLABEL="out "
+#DOWNLABEL=interface down
+#TREAT_UNKNOWN_AS_UP=0
+----
+
+* Set `SHOW_BITS=1` if you want to show bits per second instead of bytes per second.
+* `SECONDS` is seconds between refresh
+* `INLABEL` is label for download
+* `OUTLABEL` is label for upload
+* `DOWNLABEL` is label used when interface is down
+* Set `TREAT_UNKNOWN_AS_UP=1` to treat unknown interface state as up
+
+== cpu
+
+----
+[cpu]
+command=path/to/raku-i3blocklets/cpu
+interval=persist
+#LABEL="CPU "
+#SECONDS=1
+----
+
+* `SECONDS` is seconds between refresh
+
+== mem
+
+----
+[mem]
+command=path/to/raku-i3blocklets/mem
+interval=persist
+markup=pango
+#LABEL="MEM "
+#SECONDS=5
+#PWARN=50
+#PCRIT=80
+#WARN=#FFFF00
+#CRIT=#FF0000
+----
+
+* `SECONDS` is seconds between refresh
+* `PWARN` is percentage at which warning color kicks in
+* `PCRIT` is percentage at which critical color kicks in
+* `WARN` is warning color for pango
+* `CRIT` is critical color for pango
+
+== swap
+
+----
+[swap]
+command=swap
+interval=persist
+markup=pango
+#LABEL="SWAP "
+#SECONDS=5
+#PWARN=50
+#PCRIT=80
+#WARN=#FFFF00
+$CRIT=#FF0000
+#DISPLAY_PERCENT=0
+----
+
+* `SECONDS` is seconds between refresh
+* `PWARN` is percentage at which warning color kicks in
+* `PCRIT` is percentage at which critical color kicks in
+* `WARN` is warning color for pango
+* `CRIT` is critical color for pango
+* Set `DISPLAY_PERCENT=1` to display swap usage percent instead of swap usage/swap total
+
+== watson-status
+
+This i3blocklet shows the status of https://github.com/TailorDev/Watson
+
+----
+[watson-status]
+command=watson-status
+interval=persist
+#LABEL="watson"
+#SECONDS=2
+----
+
+* `SECONDS` is seconds between refresh
+
+== Blocklet/PipewireTarget.rakumod
+
+This is a raku module that shows the target of a pipewire playback stream as an icon.
+
+To use this raku i3blocklet, you have to write a raku script like this, and use the script in i3blocks.
+
+----
+#!/usr/bin/env raku
+use lib <path/to/raku-i3blocklets>;
+use Blocklet::PipewireTarget;
+use Pango;
+
+Blocklet::PipewireTarget::run(
+  # name of the pipewire playback stream that has target.object and contains mute status
+  "playback.default-sink",
+  # Show an appropriate icon for each pipewire target.object
+  targetIcons => Map.new(
+    "speaker" => "speaker icon",
+    "headphone" => "headphone icon",
+  ),
+  # The foreground text color used when the playback stream is muted.
+  :muteColor("#FF001A"),
+  # The text shown when pipewire is not running or when the playback stream is missing.
+  :warn(Pango::text("warning text", :fgcolor("#FF00FF")))
+  # A stream unix domain socket is created at $XDG_RUNTIME_DIR/i3blocks/$socketName
+  # In this case, a socket is created at $XDG_RUNTIME_DIR/i3blocks/pipewire-target
+  :socketName("pipewire-target"),
+)
+----
+
+If the script name is pipewire-target, it would be used as below in i3blocks.
+
+----
+[pipewire-target]
+command=pipewire-target
+interval=persist
+markup=pango
+----
+
+The stream unix domain socket accepts each command on a line followed by a newline character, `\n`.
+
+The commands accepted on the socket are
+
+* `toggle\n`
+** It toggles between the targets.
+* `toggleMute\n`
+** It toggles the mute status of the playback stream
+
+== Blocklet/PipewireUsbMicrophone.rakumod
+
+This is a raku module that toggles mute status of a usb microphone with usbguard and also shows the volume of it.
+
+Thus, to use this module, you have to configure usbguard and write a raku script like this.
+
+----
+#!/usr/bin/env raku
+use lib <path/to/raku-i3blocklets>;
+use Blocklet::PipewireUsbMicrophone;
+use UsbGuard;
+use Pango;
+
+Blocklet::PipewireUsbMicrophone::run(
+  "pipewire node name for usb microphone",
+  # Refer to DeviceSpec of UsbGuard.rakumod for accepted parameters.
+  :devSpec(UsbGuard::DeviceSpec.new(id => "usb id for usb microphone")),
+  # The icon shown when microphone is active or pipewire is not running.
+  :icon("microphone icon"),
+  # The text shown when microphone is missing while pipewire is running.
+  :missing(Pango::text("microphone off", :fgcolor("#00FF00"))),
+  # The color to be used when pipewire is not running.
+  :warnColor("#AA11BB"),
+  # A stream unix domain socket is created at $XDG_RUNTIME_DIR/i3blocks/$socketName
+  # In this case, a socket is created at $XDG_RUNTIME_DIR/i3blocks/pipewire-usbmicrophone
+  :socketName("pipewire-usbmicrophone"),
+);
+----
+
+If the script name is pipewire-usbmicrophone, it would be used as below in i3blocks.
+
+----
+[pipewire-usbmicrophone]
+command=pipewire-usbmicrophone
+interval=persist
+makrup=pango
+----
+
+The stream unix domain socket accepts each command on a line followed by a newline character, `\n`.
+
+The commands accepted on the socket are
+
+* `toggle\n`
+** It toggles the usb microphone.
+
+== Blocklet/PipewireVolume.rakumod
+
+This is a raku module that shows the volume of a pipewire (virtual) device.
+
+If you want to show the volume of a real pipewire device, write a script like this.
+
+----
+#!/usr/bin/env raku
+use lib <path/to/raku-i3blocklets>;
+use Blocklet::PipewireVolume;
+
+Blocklet::PipewireVolume::run(
+  "pipewire node name for a real pipewire device",
+  :icon("icon text"),
+  # This color is used when node is missing or pipewire is not running
+  :warnColor("#0000AA"),
+  # A stream unix domain socket at $XDG_RUNTIME_DIR/i3blocks/$socketName
+  # In this case, a socket is created at $XDG_RUNTIME_DIR/i3blocks/pipewire-volume
+  :socketName("pipewire-volume")
+);
+----
+
+If you want to show the volume of a virtual pipewire device connected to a real pipewire device, write a script like
+this.
+
+----
+#!/usr/bin/env raku
+use lib <path/to/raku-i3blocklets>;
+use Blocklet::PipewireVolume;
+
+Blocklet::PipewireVolume::run(
+  "pipewire node name for a virtual pipewire device",
+  :icon("icon text"),
+  :deviceNode("pipewire node name for the real pipewire device behind the virtual device"),
+  # This color is used when node is missing or pipewire is not running
+  :warnColor("#0000AA"),
+  # This color is used when $deviceNode is missing.
+  :inactiveColor("#00AA00"),
+  # A stream unix domain socket at $XDG_RUNTIME_DIR/i3blocks/$socketName
+  # In this case, a socket is created at $XDG_RUNTIME_DIR/i3blocks/pipewire-volume
+  :socketName("pipewire-volume")
+);
+----
+
+If the script name is pipewire-volume, it would be used as below in i3blocks.
+
+----
+[pipewire-volume]
+command=pipewire-volume
+interval=persist
+makrup=pango
+----
+
+The stream unix domain socket accepts each command on a line followed by a newline character, `\n`.
+
+The commands accepted on the socket are
+
+* `wpctl-set-volume arg\n`
+** This causes `wpctl set-volume node arg` to be called
+* `set-linear-volume decimal-number\n`
+** This sets the linear volume of a given node to the given decimal number.

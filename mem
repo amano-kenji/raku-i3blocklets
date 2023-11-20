@@ -1,0 +1,29 @@
+#!/usr/bin/env raku
+use lib <.>;
+use ProcMeminfo;
+
+sub MAIN (
+  Str :$label = %*ENV<LABEL> || "MEM ", #= Label for mem blocklet
+  Int :$seconds = do if %*ENV<SECONDS> { Int(%*ENV<SECONDS>) } else { 5 }, #= seconds between refresh
+  Int :$pwarn = do if %*ENV<PWARN> { Int(%*ENV<PWARN>) } else { 50 }, #= Percentage at which warning color kicks in
+  Int :$pcrit = do if %*ENV<PCRIT> { Int(%*ENV<PCRIT>) } else { 80 }, #= Percentage at which critical color kicks in
+  Str :$warn = %*ENV<WARN> || "#FFFF00", #= Warning color for pango
+  Str :$crit = %*ENV<CRIT> || "#FF0000", #= Critical color for pango
+) {
+  while True {
+    my $meminfo = ProcMeminfo::get;
+    my $total = $meminfo<MemTotal>;
+    my $avail = $meminfo<MemAvailable>;
+    my $percent = round(($total - $avail) / $total * 100);
+    my $color;
+    if $percent >= $pcrit {
+      $color = $crit;
+    } elsif $percent >= $pwarn {
+      $color = $warn;
+    }
+    my $output = $label ~ sprintf("%3d", $percent) ~ "%";
+    $output = "<span foreground='{$color}'>{$output}</span>" if $color;
+    say $output;
+    sleep $seconds;
+  }
+}

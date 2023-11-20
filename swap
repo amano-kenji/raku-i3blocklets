@@ -1,0 +1,51 @@
+#!/usr/bin/env raku
+use lib <.>;
+use ProcMeminfo;
+
+my $gibiBytes = 1024*1024;
+my $mebiBytes = 1024;
+
+sub formatSwap(Int $num) {
+  if $num >= $gibiBytes {
+    return sprintf("%4d", round($num / $gibiBytes)) ~ "GiB";
+  } elsif $num >= $mebiBytes {
+    return sprintf("%4d", round($num / $mebiBytes)) ~ "MiB";
+  } else {
+    return sprintf("%4d", $num) ~ "KiB";
+  }
+}
+
+sub MAIN (
+  Str :$label = %*ENV<LABEL> || "SWAP ", #= Label for mem blocklet
+  Int :$seconds = do if %*ENV<SECONDS> { Int(%*ENV<SECONDS>) } else { 5 }, #= seconds between refresh
+  Int :$pwarn = do if %*ENV<PWRAN> { Int(%*ENV<PWRAN>) } else { 50 }, #= Percentage at which warning color kicks in
+  Int :$pcrit = do if %*ENV<PCRIT> { Int(%*ENV<PCRIT>) } else { 80 }, #= Percentage at which critical color kicks in
+  Str :$warn = %*ENV<WARN> || "#FFFF00", #= Warning color for pango
+  Str :$crit = %*ENV<CRIT> || "#FF0000", #= Critical color for pango
+  #| Display swap usage percent instead of swap usage/swap total.
+  Bool :displayPercent= %*ENV<DISPLAY_PERCENT> && %*ENV<DISPLAY_PERCENT> == "1",
+) {
+  while True {
+    my $meminfo = ProcMeminfo::get;
+    my Int $total = $meminfo<SwapTotal>;
+    my Int $free = $meminfo<SwapFree>;
+    my Int $used = $total - $free;
+    my Int $percent = 0;
+    $percent = round($used / $total * 100) if $total > 0 ;
+    my $color;
+    if $percent >= $pcrit {
+      $color = $crit;
+    } elsif $percent >= $pwarn {
+      $color = $warn;
+    }
+    my $output;
+    if $displayPercent {
+      $output = $label ~ sprintf("%3d", $percent) ~ "%";
+    } else {
+      $output = $label ~ formatSwap($used) ~ "/" ~ formatSwap($total);
+    }
+    $output = "<span foreground='{$color}'>{$output}</span>" if $color;
+    say $output;
+    sleep $seconds;
+  }
+}

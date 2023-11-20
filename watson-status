@@ -1,0 +1,52 @@
+#!/usr/bin/env raku
+use JSON::Fast;
+
+class WatsonProjectState {
+  has Str $.project;
+  has Str @.tags;
+  has Int $.start;
+}
+
+sub watsonProjectState() of WatsonProjectState {
+  my $configDir = %*ENV<XDG_CONFIG_HOME>;
+  $configDir = "{%*ENV<HOME>}/.config" if not $configDir.defined;
+  my $state = from-json slurp "{$configDir}/watson/state";
+  if ($state<project> && $state<tags>.isa(Array) && $state<start>) {
+    WatsonProjectState.new(project => $state<project>, tags => |$state<tags>, start => $state<start>);
+  } else {
+    Nil
+  }
+}
+
+my $day = 86400;
+my $hour = 3600;
+my $min = 60;
+
+sub formatPOSIXTime($start, $now) {
+  my $timeDiff = $now - $start;
+  my $days = $timeDiff div $day;
+  my $dayRem = $timeDiff mod $day;
+  my $hours = $dayRem div $hour;
+  my $hourRem = $dayRem mod $hour;
+  my $mins = $hourRem div $min;
+
+  my $dayStr = do if $days > 0 { "{$days}d " } else { "" }
+  my $hourStr = do if $hours > 0 { "{$hours}h " } else { "" }
+
+  $dayStr ~ $hourStr ~ sprintf "%02dm", $mins;
+}
+
+sub MAIN(
+  Str :$label = %*ENV<LABEL> || "watson", #= label for watson-status
+  Int :$seconds = do if $*ENV<SECONDS> { Int($*ENV<SECONDS>) } else { 2 }, #= seconds between refresh
+) {
+  while True {
+    my $s = watsonProjectState;
+    if $s {
+      say "{$label} {$s.project}{reduce {$^a ~ " +" ~ $^b}, "", |$s.tags} {formatPOSIXTime $s.start, time}"
+    } else {
+      say $label;
+    }
+    sleep $interval;
+  }
+}

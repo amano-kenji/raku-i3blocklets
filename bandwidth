@@ -1,0 +1,149 @@
+#!/usr/bin/env raku
+grammar procNetDevGrammar {
+  token interface {
+    \h* (<[\H]-[:]>+) ":"
+
+    \h+ $<rxBytes>=\d+
+    \h+ $<rxPackets>=\d+
+    \h+ $<rxErrs>=\d+
+    \h+ $<rxDrop>=\d+
+    \h+ $<rxFifo>=\d+
+    \h+ $<rxFrame>=\d+
+    \h+ $<rxCompressed>=\d+
+    \h+ $<rxMulticast>=\d+
+
+    \h+ $<txBytes>=\d+
+    \h+ $<txPackets>=\d+
+    \h+ $<txErrs>=\d+
+    \h+ $<txDrop>=\d+
+    \h+ $<txFifo>=\d+
+    \h+ $<txColls>=\d+
+    \h+ $<txCarrier>=\d+
+    \h+ $<txCompressed>=\d+
+
+    "\n"
+  }
+  token TOP {
+    [ <-[\n]>+ "\n" ] ** 2 # Skip two lines
+    <interface>+
+  }
+}
+
+class procNetDevAction {
+  method interface($/) {
+    make $0.Str => %{
+      rxBytes => $<rxBytes>.Int,
+      rxPackets => $<rxPackets>.Int,
+      rxErrs => $<rxErrs>.Int,
+      rxDrop => $<rxDrop>.Int,
+      rxFifo => $<rxFifo>.Int,
+      rxFrame => $<rxFrame>.Int,
+      rxCompressed => $<rxCompressed>.Int,
+      rxMulticast => $<rxMulticast>.Int,
+      txBytes => $<txBytes>.Int,
+      txPackets => $<txPackets>.Int,
+      txErrs => $<txErrs>.Int,
+      txDrop => $<txDrop>.Int,
+      txFifo => $<txFifo>.Int,
+      txColls => $<txColls>.Int,
+      txCarrier => $<txCarrier>.Int,
+      txCompressed => $<txCompressed>.Int,
+    }
+  }
+  method TOP($/) {
+    make reduce { $^a{$^b.made.key}=$^b.made.value; $^a; }, %{}, |$<interface>
+  }
+}
+
+sub procNetDev() {
+  procNetDevGrammar.parse(slurp("/proc/net/dev"), actions => procNetDevAction).made;
+}
+
+my $teraBits = 1000 ** 4;
+my $gigaBits = 1000 ** 3;
+my $megaBits = 1000 ** 2;
+my $kiloBits = 1000;
+
+my $tebiBytes = 1024 ** 4;
+my $gibiBytes = 1024 ** 3;
+my $mebiBytes = 1024 ** 2;
+my $kibiBytes = 1024;
+
+sub formatBits(Int $bytes) {
+  my Int $bits = $bytes * 8;
+  sprintf "%12s", do if $bits >= $teraBits {
+    round($bits/$teraBits, 0.1) ~ "Tbit/s";
+  } elsif $bits >= $gigaBits {
+    round($bits/$gigaBits, 0.1) ~ "Gbit/s";
+  } elsif $bits >= $megaBits {
+    round($bits/$megaBits, 0.1) ~ "Mbit/s";
+  } elsif $bits >= $kiloBits {
+    round($bits/$kiloBits, 0.1) ~ "kbit/s";
+  } else {
+    $bits ~ "bit/s";
+  }
+}
+
+sub formatBytes(Int $bytes) {
+  sprintf "%11s", do if $bytes >= $tebiBytes {
+    round($bytes/$tebiBytes, 0.1) ~ "TiB/s";
+  } elsif $bytes >= $gibiBytes {
+    round($bytes/$gibiBytes, 0.1) ~ "GiB/s";
+  } elsif $bytes >= $mebiBytes {
+    round($bytes/$mebiBytes, 0.1) ~ "MiB/s";
+  } elsif $bytes >= $kibiBytes {
+    round($bytes/$kibiBytes, 0.1) ~ "KiB/s";
+  } else {
+    $bytes ~ "B/s";
+  }
+}
+
+sub MAIN(
+  #| show bits per second instead of bytes per second
+  Bool :$bits = %*ENV<SHOW_BITS>.defined && %*ENV<SHOW_BITS> == "1",
+  #| seconds between refresh
+  Int :$seconds = do if %*ENV<SECONDS> { Int(%*ENV<SECONDS>) } else { 1 },
+  #| network interface name
+  Str :$interface = %*ENV<INTERFACE>,
+  #| label for download
+  Str :$inlabel = %*ENV<INLABEL> || "in ",
+  #| label for upload
+  Str :$outlabel = %*ENV<OUTLABEL> || "out ",
+  #| label used when interface is down
+  Str :$downlabel = %*ENV<DOWNLABEL> || "Interface down",
+  #| If the interface is in unknown state, display as if it is up.
+  Bool :$unknown_up = %*ENV<TREAT_UNKNOWN_AS_UP>.defined && %*ENV<TREAT_UNKNOWN_AS_UP> == "1",
+) {
+  if not $interface.defined {
+    say "Interface is not specified.";
+    exit 1;
+  }
+
+  sub isInterfaceUp() {
+    try {
+      my $operstate = slurp("/sys/class/net/{$interface}/operstate").trim;
+      return $operstate eq "up" || ($unknown_up && $operstate eq "unknown");
+    }
+  }
+
+  my $oldDev = procNetDev{$interface};
+  my $oldTime = now;
+  my $format = do if $bits { &formatBits } else { &formatBytes }
+  while True {
+    sleep $seconds;
+    my $newDev = procNetDev{$interface};
+    my $newTime = now;
+    my $timeDiff = $newTime - $oldTime;
+
+    if (not isInterfaceUp) {
+      say $downlabel;
+    } elsif $oldDev.defined && $newDev.defined {
+      my Int $rxBytesPerSecond = Int(($newDev<rxBytes> - $oldDev<rxBytes>) / $timeDiff);
+      my Int $txBytesPerSecond = Int(($newDev<txBytes> - $oldDev<txBytes>) / $timeDiff);
+      say $inlabel, " ", $format($rxBytesPerSecond), " ", $outlabel, " ", $format($txBytesPerSecond);
+    }
+
+    $oldDev = $newDev;
+    $oldTime = $newTime;
+  }
+}
